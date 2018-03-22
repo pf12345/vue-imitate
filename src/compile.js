@@ -1,8 +1,13 @@
 import { replace, getAttrs } from './util.js';
 import text from './directives/text.js';
 import bind from './directives/bind.js';
+import model from './directives/model.js';
 
 import Directive from './directive.js';
+
+const bindRE = /^v-bind:|^:/;
+const onRE = /^v-on:|^@/;
+const dirAttrRE = /^v-([^:]+)(?:$|:(.*)$)/;
 
 export default function Compile(vueImitate) {
 	vueImitate.prototype.compile = function() {
@@ -36,18 +41,29 @@ function compileNode(el) {
 }
 
 function compileElementNode(el) {
-	let attrs = getAttrs(el), eventReg = /^v-bind:|^:/;
+	let attrs = getAttrs(el);
 	return function(vm) {
 		if(attrs && attrs.length) {
 			attrs.forEach((attr) => {
-				if(eventReg.test(attr.name)) {
-					let	description = {
+				let name = attr.name, description, matched;
+				if(bindRE.test(attr.name)) {
+					description = {
 						el: el,
 						def: bind,
-						name: attr.name.replace(eventReg, ''),
+						name: name.replace(bindRE, ''),
 						value: attr.value
 					}
-					vm._directives.push(new Directive(vm, el, description))
+				} else if((matched = name.match(dirAttrRE))) {
+					description = {
+						el: el,
+						def: model,
+						name: matched[1],
+						value: attr.value
+					}
+				}
+				if(description) {
+					vm._directives.push(new Directive(vm, el, description));
+
 				}
 			})
 		}

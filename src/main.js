@@ -8,7 +8,7 @@ let vm = new vueImitate({
 	data() {
 		return {
 			message: 'this is test',
-			number: 0,
+			number: 5,
 			number1: 1,
 			number2: 2
 		}
@@ -16,6 +16,7 @@ let vm = new vueImitate({
 	methods: {
 		add() {
 			this.number1 += 1;
+			this.number += 1;
 		}
 	}
 })

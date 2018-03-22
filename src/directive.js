@@ -5,7 +5,7 @@ export default function Directive(vm, el, description) {
 	this.vm = vm;
 	this.el = el;
 	this.description = description;
-	this.expression = description.token ? description.token.value : '';
+	this.expression = description.token ? description.token.value : description.value;
 }
 
 Directive.prototype._bind = function() {
