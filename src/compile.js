@@ -1,7 +1,5 @@
 import { replace, getAttrs } from './util.js';
-import text from './directives/text.js';
-import bind from './directives/bind.js';
-import model from './directives/model.js';
+import publicDirectives from './directives/index.js';
 
 import Directive from './directive.js';
 
@@ -49,14 +47,14 @@ function compileElementNode(el) {
 				if(bindRE.test(attr.name)) {
 					description = {
 						el: el,
-						def: bind,
+						def: publicDirectives['bind'],
 						name: name.replace(bindRE, ''),
 						value: attr.value
 					}
 				} else if((matched = name.match(dirAttrRE))) {
 					description = {
 						el: el,
-						def: model,
+						def: publicDirectives[matched[1]],
 						name: matched[1],
 						value: attr.value
 					}
@@ -86,7 +84,7 @@ function compileTextNode(el) {
 				let	_el = childNodes[j], description = {
 					el: _el,
 					token: tokens[j],
-					def: text
+					def: publicDirectives['text']
 				}
 				vm._directives.push(new Directive(vm, _el, description))
 			}
