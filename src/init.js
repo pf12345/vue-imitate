@@ -1,12 +1,12 @@
 import { extend } from './util.js';
 import { observer } from './Observer.js';
+import Compile from './compile.js';
 
 export default function vueImitate(options) {
 	this.options = options || {};
 	this.selector = options.el ? ('#' + options.el) : 'body';
 	this.data = typeof options.data === 'function' ? options.data() : options.data;
 	this.el = document.querySelectorAll(this.selector)[0];
-	this.template = this.el.innerHTML;
 
 	this._directives = [];
 
@@ -14,6 +14,7 @@ export default function vueImitate(options) {
 	this.compile();
 }
 
+Compile(vueImitate);
 
 vueImitate.prototype.initData = function() {
 	let data = this.data, self = this;

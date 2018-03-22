@@ -38,6 +38,30 @@ function compileNode(el) {
 	}
 }
 
+function compileNodeList(nodeList, vm) {
+	let nodeLinks = [], nodeListLinks = [];
+	if(!nodeList || !nodeList.length) {
+		return;
+	}
+	for(let i = 0, _i = nodeList.length; i < _i; i++) {
+		let node = nodeList[i];
+		nodeLinks.push(compileNode(node)),
+		nodeListLinks.push(compileNodeList(node.childNodes, vm));
+	}
+	return function(vm) {
+		if(nodeLinks && nodeLinks.length) {
+			for(let i = 0, _i = nodeLinks.length; i < _i; i++) {
+				nodeLinks[i] && nodeLinks[i](vm);
+			}
+		}
+		if(nodeListLinks && nodeListLinks.length) {
+			for(let i = 0, _i = nodeListLinks.length; i < _i; i++) {
+				nodeListLinks[i] && nodeListLinks[i](vm);
+			}
+		}
+	}
+}
+
 function compileElementNode(el) {
 	let attrs = getAttrs(el);
 	return function(vm) {
@@ -97,29 +121,7 @@ function compileTextNode(el) {
 	}	
 }
 
-function compileNodeList(nodeList, vm) {
-	let nodeLinks = [], nodeListLinks = [];
-	if(!nodeList || !nodeList.length) {
-		return;
-	}
-	for(let i = 0, _i = nodeList.length; i < _i; i++) {
-		let node = nodeList[i];
-		nodeLinks.push(compileNode(node)),
-		nodeListLinks.push(compileNodeList(node.childNodes, vm));
-	}
-	return function(vm) {
-		if(nodeLinks && nodeLinks.length) {
-			for(let i = 0, _i = nodeLinks.length; i < _i; i++) {
-				nodeLinks[i] && nodeLinks[i](vm);
-			}
-		}
-		if(nodeListLinks && nodeListLinks.length) {
-			for(let i = 0, _i = nodeListLinks.length; i < _i; i++) {
-				nodeListLinks[i] && nodeListLinks[i](vm);
-			}
-		}
-	}
-}
+
 
 function parseText(str) {
 	let reg = /\{\{(.+?)\}\}/ig;
@@ -141,17 +143,4 @@ function parseText(str) {
 	}
 
 	return tokens;
-}
-
-
-function strToFragment(str) {
-	let Fragment = document.createDocumentFragment();
-	let node = document.createElement('div');
-	node.innerHTML = str;
-
-	while (child = node.firstChild) {
-		Fragment.appendChild(child);
-	}
-
-	return Fragment;
 }

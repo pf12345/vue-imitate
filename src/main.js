@@ -1,7 +1,5 @@
 import vueImitate from './init.js';
-import Compile from './compile.js';
 
-Compile(vueImitate);
 
 let vm = new vueImitate({
 	el: 'root',
