@@ -9,9 +9,6 @@ export default {
   },
 
   apply (el, value) {
-    toggle();
-    function toggle () {
-      el.style.display = value ? '' : 'none'
-    }
+    el.style.display = value ? '' : 'none'
   }
 }

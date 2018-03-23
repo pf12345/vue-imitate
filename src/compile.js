@@ -107,7 +107,8 @@ function compileTextNode(el) {
 			if((token = tokens[j]) && token.tag) {
 				let	_el = childNodes[j], description = {
 					el: _el,
-					token: tokens[j],
+					name: 'text',
+					value: tokens[j].value,
 					def: publicDirectives['text']
 				}
 				vm._directives.push(new Directive(vm, _el, description))
@@ -141,6 +142,5 @@ function parseText(str) {
 		})
 	    lastIndex = index + match[0].length
 	}
-
 	return tokens;
 }
