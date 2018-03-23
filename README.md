@@ -1,12 +1,14 @@
 # vue-imitate
 
-> 深入解析vue 1实现原理，并实现vue双向数据绑定模型
+> 深入解析vue 1实现原理，并实现vue双向数据绑定模型``vueImitate``，此模型(vueImitate)只适用于学习和了解vue实现原理；无法作为项目中使用，没有进行任何异常错误处理及各种使用场景的兼容；但通过此项目，可以让你：
+
+- 深入了解vue实现原理
+- 亲手一步一步自己实现vue相应功能，包括双向绑定、指令如v-model、v-show、v-bind等
 
 
 下面我们重头开始框架的实现，我们知道，vue的使用方式如下：
 
 ```js
-
 var vm = new Vue({
 	el: 'root',
 	data() {
@@ -28,10 +30,9 @@ var vm = new Vue({
 		}
 	}
 })
-
 ```
 
-由此可见，vue为一个构造函数，并且调用时传入一个对象参数，所以主函数可以如下，源码可见[这里](https://github.com/pf12345/vue-imitate/blob/master/src/init.js)；并对参数进行对应的初始化处理：
+由此可见，vue为一个构造函数，并且调用时传入一个对象参数，所以主函数``vueImitate``可以如下，源码可见[这里](https://github.com/pf12345/vue-imitate/blob/master/src/init.js)；并对参数进行对应的初始化处理：
 
 ```
 // init.js 
@@ -622,14 +623,147 @@ Dep.prototype.addSub = function(sub) {
 }
 ```
 
+那么，在哪儿去初始化``watcher``呢？就是在对指令进行``_bind()``时，如下代码，在执行``_bind``时，会实例化``Watcher``; 在第三个参数的回调函数里执行``self.update(watcher.value);``，也就是当监控到数据变化，会执行对应的``update``方法进行更新；
+```
+// directive.js
+Directive.prototype._bind = function() {
+	extend(this, this.description.def);
+	if(this.bind) {
+		this.bind();
+	}
+	var self = this, 
+	watcher = new Watcher(this.vm, this.expression, function() {
+		self.update(watcher.value);
+	})
+	if(this.update) {
+		this.update(watcher.value);
+	}
+}
+```
+而前面说了，开始时没有数据，使用``this.update(123)``会将界面对应``number``更新为123，当时没有对应``number``真实数据；而此时，在watcher中，获取到了对应数据并保存到``value``中，因此，就执行``this.update(watcher.value);``，此时就可以将真实数据与界面进行绑定，并且当数据变化时，界面也会自动进行更新；最终结果如下图：
 
-## Demo运行
+<img alt="demo qcode" src="./static/images/WX20180323-134441.png" />
+
+为什么所有数据都是``undefined``呢？我们可以通过下面代码知道, 在实例化``watcher``时，调用``this.value = this.get();``时，其实是通过传入的key在``this.vm``中直接取值；但是我们初始化时，所有值都是通过``this.options = options || {}; ``放到``this.options``里面，所以根本无法取到：
+
+```
+// watcher.js
+
+_prototype.get = function() {
+	Dep.target = this;
+	var value = this.getter && this.getter.call(this.vm, this.vm);
+	Dep.target = null;
+	return value;
+}
+_prototype.parseGetter = function(exp) {
+	if (/[^\w.$]/.test(exp)) return; 
+
+	var exps = exp.split('.');
+
+	return function(obj) {
+		let value = '';
+		for (var i = 0, len = exps.length; i < len; i++) {
+			if (!obj) return;
+			value = obj[exps[i]];
+		}
+		return value;
+	}
+}
+```
+
+那么，我们如何能直接可以通过诸如``this.number``取到值呢？只能如下，通过下面``extend(this, data);``方式，就将数据绑定到了实例化的``vueImitate``上面；
+```
+import { extend } from './util.js';
+import { observer } from './Observer.js';
+import Compile from './compile.js';
+
+export default function vueImitate(options) {
+	this.options = options || {};
+	this.selector = options.el ? ('#' + options.el) : 'body';
+	this.data = typeof options.data === 'function' ? options.data() : options.data;
+	this.el = document.querySelectorAll(this.selector)[0];
+
+	this._directives = [];
+
+	this.initData();
+	this.compile();
+}
+
+Compile(vueImitate);
+
+vueImitate.prototype.initData = function() {
+	let data = this.data, self = this;
+
+	extend(this, data);
+
+	observer(this.data);
+}
+
+``
+
+处理后结果如下：
+
+<img alt="demo qcode" src="./static/images/WX20180323-134017.png" />
+
+数据也绑定上了，但是当我们尝试使用下面方式对数据进行改变时，发现并没有自动更新到界面，界面数据并没有变化；
+
+```
+methods: {
+	add() {
+		this.number1 += 1;
+		this.number += 1;
+	}
+}
+```
+为什么呢？通过上面代码可知，我们其实``observer``的是``vueImitate``实例化对象的``data``对象；而我们更改值是通过``this.number += 1;``实现的；其实并没有改``vueImitate.data.number``的值，而是改``vueImitate.number``的值，所以也就不会触发``observer``里面的``setter``；也不会去触发对应的``watcher``里面的``update``；那如何处理呢？我们可以通过如下方式实现, 完整源码见[这里](https://github.com/pf12345/vue-imitate/blob/master/src/init.js#L19-L36)：
+
+```
+// init.js
+vueImitate.prototype.initData = function() {
+	let data = this.data, self = this;
+
+	extend(this, data);
+
+	Object.keys(data).forEach((key) => {
+		Object.defineProperty(self, key, {
+			set: function(newVal) {
+				self.data[key] = newVal;
+			},
+			get: function() {
+				return self.data[key];
+			}
+		})
+	})
+		
+	observer(this.data);
+}
+
+```
+这里通过对``vueImitate``里对应的``data``的属性进行``Object.defineProperty``处理，当对其进行赋值时，会再将其值赋值到``vueImitate.data``对应的属性上面，那样，就会去触发``observer(this.data);``里面的``setter``，从而去更新界面数据；
+
+至此，整个数据处理就已经完成，总结一下：
+
+1、首先，在初始化``vueImitate``时，我们会将初始化数据通过``options.data``传入，后会进行处理，保存至``this.data``中；
+
+2、通过``initData``方法将数据绑定到``vueImitate``实例化对象上面，并对其进行数据监控，然后使用``observer``对``this.data``进行监控，在实例化``Observer``时，会去实例化一个对应的调度中心``Dep``；
+
+3、在编译过程中，会创建指令，通过指令实现每个需要处理节点的数据处理和双向绑定；
+
+4、在指令``_bind()``时，会去实例化对应的``watcher``，创建一个任务，主要实现数据获取、数据变化时，对应界面更新(也就是更新函数的调用)、并将生成的watcher存储到对应的步骤2中实例化的调度中心中；
+
+5、当数据更新时，会触发对应的``setter``，然后调用``dep.notify();``触发调度中心中所有任务的更新，即执行所有的``watcher.update``，从而实现对应界面的更新；
+
+到目前为止，整个框架的实现基本已经完成。其中包括compile、linker、oberver、directive(v-model、v-show、v-bind、v-text)、watcher；如果需要更深入的研究，可见[项目代码](https://github.com/pf12345/vue-imitate); 可以自己``clone``下来，运行起来；文中有些可能思考不够充分，忘见谅，也欢迎大家指正；
+
+
+
+## 项目运行
 
 ``` bash
 # install dependencies
 npm install
 
-# serve with hot reload at localhost:8080
+# serve with hot reload at localhost:8081
 npm run dev
 
 ```
