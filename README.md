@@ -401,6 +401,228 @@ for(let i = 0, _i = newDirectives.length; i < _i; i++) {
  - 数据变化后，需要通知到ui界面，并自动变化
  - 对于输入框，使用v-model时，需要将输入内容反应到对应数据
 
+#### 数据双向绑定
+
+需要实现双向绑定，就是在数据变化后能够自动的将对应界面进行更新；那么，如何监控数据的变化呢？目前有几种方式，一种是angular的脏检查方式，就是对用户所以操作、会导致数据变化的行为进行拦截，如``ng-click``、``$http``、``$timeout``等；当用户进行请求数据、点击等时，会对所有的数据进行检查，如果数据变化了，就会触发对应的处理；而另一种是vue的实现方式，使用``Object.definProperty()``方法，对数据添加``setter``和``getter``；当对数据进行赋值时，会自动触发``setter``；就可以监控数据的变化；主要处理如下, 源码见[这里](https://github.com/pf12345/vue-imitate/blob/master/src/Observer.js)：
+
+```
+export function Observer(data) {
+	this.data = data;
+	Object.keys(data).forEach((key) => {
+		defineProperty(data, key, data[key]);
+	})
+}
+
+export function observer(data, vm) {
+	if(!data || typeof data !== 'object') {
+		return;
+	}
+
+	let o = new Observer(data);
+	return o;
+}
+
+function defineProperty(data, key, val) {
+	let _value = data[key];
+	let childObj = observer(_value);
+
+	let dep = new Dep(); //生成一个调度中心，管理此字段的所有订阅者
+	Object.defineProperty(data, key, {
+		enumerable: true, // 可枚举
+        configurable: false, // 不能再define
+		get: function() {
+			if (Dep.target) {
+				dep.depend();
+			}
+			return val;
+		},
+		set: function(value) {
+			val = value;
+			childObj = observer(value);
+			dep.notify();
+		}
+	})
+}
+```
+
+``Observer``是一个构造函数，主要对传入的数据进行``Object.defineProperty``绑定；可以监控到数据的变化；而在每一个Observer中，会初始化一个``Dep``的称为‘调度管理器’的对象，它主要负责保存界面更新的操作和操作的触发；
+
+#### 界面更新
+
+在通过上面``Observer``实现数据监控之后，如何通知界面更新呢？这里使用了‘发布／订阅模式’；如果需要对此模式进行更深入理解，可查看[此链接](https://www.zhihu.com/question/23486749)；而每个数据key都会维护了一个独立的调度中心``Dep``;通过在上面``defineProperty``时创建；而``Dep``主要保存数据更新后的处理任务及对任务的处理，代码也非常简单，就是使用``subs``保存所有任务，使用``addSub``添加任务，使用``notify``处理任务，``depend``作用会在下面``watcher``中进行说明：
+
+```
+// Dep.js
+
+let uid = 0;
+// 调度中心
+export default function Dep() {
+	this.id = uid++;
+	this.subs = []; //订阅者数组
+	this.target = null; // 有何用处？
+}
+
+// 添加任务
+Dep.prototype.addSub = function(sub) {
+	this.subs.push(sub);
+}
+
+// 处理任务
+Dep.prototype.notify = function() {
+	this.subs.forEach((sub) => {
+		if(sub && sub.update && typeof sub.update === 'function') {
+			sub.update();
+		}
+	})
+}
+
+Dep.prototype.depend = function() {
+	Dep.target.addDep(this);
+}
+```
+
+那么，处理任务来源哪儿呢？vue中又维护了一个``watcher``的对象，主要是对任务的初始化和收集处理；也就是一个``watcher``就是一个任务；而整个``watcher``代码如下, 线上源码见[这里](https://github.com/pf12345/vue-imitate/blob/master/src/watcher.js)：
+```
+export default function Watcher(vm, expression, cb) {
+	this.cb = cb;
+	this.vm = vm;
+	this.expression = expression;
+	this.depIds = {};
+
+	if (typeof expression === 'function') {
+        this.getter = expOrFn;
+    } else {
+        this.getter = this.parseGetter(expression);
+    }
+
+	this.value = this.get();
+}
+
+let _prototype = Watcher.prototype;
+
+_prototype.update = function() {
+	this.run();
+}
+
+_prototype.run = function() {
+	let newValue = this.get(), oldValue = this.value;
+	if(newValue != oldValue) {
+		this.value = newValue;
+		this.cb.call(this.vm, newValue);
+	}
+}
+
+_prototype.addDep = function(dep) {
+	// console.log(dep)
+	if (!this.depIds.hasOwnProperty(dep.id)) {
+		dep.addSub(this);
+		this.depIds[dep.id] = dep;
+	}
+}
+
+_prototype.get = function() {
+	Dep.target = this;
+	var value = this.getter && this.getter.call(this.vm, this.vm);
+	Dep.target = null;
+	return value;
+}
+
+_prototype.parseGetter = function(exp) {
+	if (/[^\w.$]/.test(exp)) return; 
+
+	var exps = exp.split('.');
+
+	return function(obj) {
+		let value = '';
+		for (var i = 0, len = exps.length; i < len; i++) {
+			if (!obj) return;
+			value = obj[exps[i]];
+		}
+		return value;
+	}
+}
+```
+
+在初始化``watcher``时，需要传入vm(整个项目初始化时实例化的vueImitate对象，因为需要用到里面的对应数据)、expression(任务对应的数据的key，如上面的‘number’)、cb(一个当数据变化后，界面如何更新的函数，也就是上面directive里面的update方法)；我们需要实现功能有，第一是每个任务有个``update``方法，主要用于在数据变化时，进行调用，即：
+
+```
+// 处理任务
+Dep.prototype.notify = function() {
+	this.subs.forEach((sub) => {
+		if(sub && sub.update && typeof sub.update === 'function') {
+			sub.update();
+		}
+	})
+}
+```
+
+第二个是在初始化``watcher``时，需要将实例化的watcher(任务)放入调度中心``dep``的``subs``中；如何实现呢？这里，使用了一些黑科技，流程如下，这儿我们以``expression``为'number'为例：
+
+1、在初始化watcher时，会去初始化一个获取数据的方法``this.getter``就是，能够通过传入的``expression``取出对应的值；如通过``number``取出对应的初始化时的值``5``;
+
+2、调用``this.value = this.get();``方法，方法中会去数据源中取值，并将此时的watcher放入``Dep.target``中备用，并返回取到的值；
+```
+// watcher.js
+_prototype.get = function() {
+	Dep.target = this;
+	var value = this.getter && this.getter.call(this.vm, this.vm);
+	Dep.target = null;
+	return value;
+}
+```
+
+3、因为我们在上面``Observer``已经对数据进行了``Object.defineProperty``绑定，所以，当上面2步取值时，会触发对应的``getter``，如下, 触发get函数之后，因为上面2已经初始化``Dep.target = this;``了，所以会执行``dep.depend();``，就是上面说的``depend``函数了：
+```
+// Observer.js
+let dep = new Dep(); //生成一个调度中心，管理此字段的所有订阅者
+Object.defineProperty(data, key, {
+	enumerable: true, // 可枚举
+    configurable: false, // 不能再define
+	get: function() {
+		if (Dep.target) {
+			dep.depend();
+		}
+		return val;
+	},
+	set: function(value) {
+		val = value;
+		childObj = observer(value);
+		dep.notify();
+	}
+})
+
+```
+
+3、触发``dep.depend();``之后，如下代码，会执行``Dep.target.addDep(this);``, 此时的``this``就是上面实例化的``dep``, ``Dep.target``则对应的是刚刚1步中实例化的``watcher``，即执行``watcher.addDep(dep)``;
+
+```
+// Dep.js
+Dep.prototype.depend = function() {
+	Dep.target.addDep(this);
+}
+```
+
+4、触发``watcher.addDep(dep)``，如下代码，如果目前还没此dep；就执行``dep.addSub(this);``,此时的``this``就是指代当前``watcher``，也就是1步时实例化的watcher；此时dep是步骤3中实例化的``dep``; 即是，``dep.addSub(watcher);``
+```
+// watcher.js
+_prototype.addDep = function(dep) {
+	// console.log(dep)
+	if (!this.depIds.hasOwnProperty(dep.id)) {
+		dep.addSub(this);
+		this.depIds[dep.id] = dep;
+	}
+}
+```
+
+5、最后执行``dep.addSub(watcher);``，如下代码，到这儿，就将初始化的``watcher``添加到了调度中心的数组中；
+```
+// Dep.js
+Dep.prototype.addSub = function(sub) {
+	this.subs.push(sub);
+}
+```
+
+
 ## Demo运行
 
 ``` bash
