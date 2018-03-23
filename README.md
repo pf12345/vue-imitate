@@ -5,6 +5,9 @@
 - 深入了解vue实现原理
 - 亲手一步一步自己实现vue相应功能，包括双向绑定、指令如v-model、v-show、v-bind等
 
+整体效果如下：
+
+<img alt="demo qcode" src="./static/images/vue-imitate.gif" />
 
 下面我们重头开始框架的实现，我们知道，vue的使用方式如下：
 
