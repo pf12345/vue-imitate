@@ -699,7 +699,7 @@ vueImitate.prototype.initData = function() {
 	observer(this.data);
 }
 
-``
+```
 
 处理后结果如下：
 
